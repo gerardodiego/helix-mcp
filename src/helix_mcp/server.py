@@ -26,7 +26,8 @@ mcp = FastMCP(
         "Control a Line 6 Helix LT over USB MIDI (presets, snapshots, footswitches, "
         "expression, looper, tap tempo) and inspect/edit/generate .hlx preset files. "
         "MIDI cannot create patches: build them as .hlx files with the preset tools, "
-        "then the user imports them in HX Edit."
+        "then the user imports them in HX Edit. This server is Helix-only; the BOSS Katana "
+        "has its own server (katana-mcp)."
     ),
 )
 

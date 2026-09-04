@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "helix-mcp"
-version = "0.1.0"
-description = "MCP server that controls a Line 6 Helix (LT/Floor/Rack) over USB MIDI and generates .hlx presets"
+version = "0.3.0"
+description = "Two independent MCP servers: helix-mcp (Line 6 Helix over USB MIDI + .hlx presets) and katana-mcp (BOSS Katana MkII over SysEx)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Gerardo de la Riva" }]
 dependencies = [
-  "mcp[cli]>=1.2",
+  "mcp[cli]>=1.2,<2",
   "mido>=1.3",
   "python-rtmidi>=1.5",
 ]
@@ -21,9 +21,10 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 helix-mcp = "helix_mcp.server:main"
+katana-mcp = "katana_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/helix_mcp"]
+packages = ["src/helix_mcp", "src/katana_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

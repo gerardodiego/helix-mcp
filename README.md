@@ -1,7 +1,16 @@
-# helix-mcp
+# helix-mcp · katana-mcp
 
-An [MCP](https://modelcontextprotocol.io) server that lets Claude drive a **Line 6 Helix LT**
-(also Floor/Rack) over USB MIDI and build/edit **`.hlx` presets**.
+Two **independent** [MCP](https://modelcontextprotocol.io) servers in one repo, one per physical unit:
+
+| Server | Entry point | Package | Talks to |
+|---|---|---|---|
+| **helix-mcp** | `helix-mcp` | `src/helix_mcp/` | Line 6 **Helix LT** (also Floor/Rack) — USB MIDI CC/PC + `.hlx` preset files |
+| **katana-mcp** | `katana-mcp` | `src/katana_mcp/` | BOSS **Katana MkII** — Roland RQ1/DT1 SysEx on the `KATANA` USB-MIDI port |
+
+They share nothing but the venv. Katana ⇄ Helix "by intent" conversion will be a third,
+later layer that uses both.
+
+## helix-mcp
 
 Ask Claude for "the Pipeline surf tone" → it writes `presets/generated/pipeline.hlx` →
 you drag it into HX Edit → Claude switches to it and drives snapshots, footswitches,
@@ -25,22 +34,27 @@ git clone git@github.com:gerardodiego/helix-mcp.git
 cd helix-mcp
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest        # 16 tests, no hardware needed
+python -m pytest        # 31 tests, no hardware needed (fake MIDI / fake amp)
 ```
+
+This installs both entry points, `.venv/bin/helix-mcp` and `.venv/bin/katana-mcp`.
 
 Plug the Helix in via USB. No driver is needed on macOS; it shows up as a MIDI port
 named like `Helix LT`.
 
 ## Claude Desktop / Claude Code config
 
+Two separate entries — enable whichever unit is on the desk:
+
 ```json
 {
   "mcpServers": {
     "helix": {
       "command": "/ABS/PATH/helix-mcp/.venv/bin/helix-mcp",
-      "env": {
-        "HELIX_PRESET_DIR": "/ABS/PATH/helix-mcp/presets"
-      }
+      "env": { "HELIX_PRESET_DIR": "/ABS/PATH/helix-mcp/presets" }
+    },
+    "katana": {
+      "command": "/ABS/PATH/helix-mcp/.venv/bin/katana-mcp"
     }
   }
 }
@@ -96,11 +110,50 @@ Then in Claude: `catalog_models` / `catalog_models search="Reverb"` / `catalog_p
 
 Sources: Helix Owner's Manual (MIDI chapter), [helixhelp.com MIDI guide](https://helixhelp.com/tips-and-guides/universal/midi).
 
+## katana-mcp
+
+The Katana shows up on macOS as USB-MIDI ports `KATANA` (SysEx — what BOSS Tone Studio uses)
+and `KATANA DAW CTRL`. `katana_mcp/sysex.py` speaks Roland RQ1/DT1 on the first one.
+Header `F0 41 00 00 00 00 33`, checksum `(128 - sum(addr+data)) % 128`. Tone Studio may stay
+open at the same time.
+
+Env: `KATANA_MIDI_PORT` (default auto `*KATANA*` minus `DAW`), `KATANA_DEVICE_ID` (default 0),
+`KATANA_DRY_RUN=1` for an in-memory fake.
+
+| Tool | Purpose |
+|---|---|
+| `katana_status` | port + Universal Identity reply (MkII: `41 33 03 00 00 06 00 00 00`) |
+| `katana_read_panel` | patch name + gain, volume, bass, middle, treble, presence, solo level, amp type (raw) |
+| `katana_set_panel(gain=…, bass=…)` / `katana_get` / `katana_set` | write knobs, 0–100 exactly as Tone Studio shows |
+| `katana_select_channel("A3")` | recall panel / A1–A4 / B1–B4 (address unverified on MkII) |
+| `katana_editor_mode(on)` | Tone Studio "BTS" mode — switched on automatically by any edit-buffer read |
+| `katana_params` | address table with a *verified-on* note per entry |
+| `katana_read_hex`, `katana_scan`, `katana_write_hex` | raw address-space exploration |
+| `katana_watch(seconds)` | log the DT1s the amp broadcasts while you turn knobs (runs on one address are collapsed) |
+
+### MkII address map (verified live against Tone Studio, 2026-09-04)
+
+| Address | Meaning |
+|---|---|
+| `60 00 00 00..0F` | patch name (ASCII) |
+| `60 00 06 51 … 56` | **gain, volume, bass, middle, treble, presence** — the displayed values, 0–100 |
+| `60 00 00 2C` | solo level |
+| `60 00 00 21` | amp type (raw; `1D` = Clean + Variation on — rest of the table TODO) |
+| `60 00 05 70` | expression pedal position (GA-FC EXP), 0–100 |
+| `60 00 00 22`, `24..28` | internal GT-100-style preamp: curve-mapped gain, mirrored B/M/T/P/volume |
+| `00 00 04 2x` | MkI "live panel" — **no reply on MkII**, not used |
+
+Still to map: booster / mod / fx / delay / reverb blocks, cab resonance, contour, channel recall.
+References: [katana-midi-bridge](https://github.com/snhirsch/katana-midi-bridge) (MkI),
+[katana-dev/docs](https://github.com/katana-dev/docs).
+
 ## Roadmap
 
 - [ ] `create_preset(tone_spec)` — build a preset from a high-level spec (amp, cab, chain, params, snapshots) using the catalog
 - [ ] Automate the HX Edit import step on macOS
-- [ ] Katana MkII backend (USB SysEx, see [katana-midi-bridge](https://github.com/snhirsch/katana-midi-bridge))
+- [x] Katana MkII panel knobs verified and writable
+- [ ] Map the rest of the Katana MkII edit buffer (effect blocks, amp type table, channel recall); read/write whole patches
+- [ ] **Patch conversion Katana ⇄ Helix by intent** (amp family, drive type, mod/delay/reverb type, EQ curve, levels — documented approximations, no 1:1 model equivalence)
 
 ## Lineage
 
